@@ -46,9 +46,9 @@ def visualize_flow_torch(flow_tensor):
     # 饱和度S：取值范围为0.0～1.0
     # 亮度V：取值范围为0.0(黑色)～1.0(白色)
     N, _, H, W = flow_tensor.shape
-    visualize_tensor = torch.zeros((N, 3, H, W), dtype=torch.float32, requires_grad=False)  # (N, 3, H, W)
+    visualize_tensor = torch.zeros((N, 3, H, W), dtype=torch.float32)  # (N, 3, H, W)
     for i in range(N):
-        flow = flow_tensor[i].numpy().transpose((1, 2, 0))  # (H, W, 2)
+        flow = flow_tensor[i].detach().cpu().numpy().transpose((1, 2, 0))
         mag, ang = cv2.cartToPolar(flow[:, :, 0], flow[:, :, 1])
         hsv = np.zeros((H, W, 3), np.uint8)  # (H, W, 3)
         hsv[:, :, 0] = ang * 180 / np.pi / 2
