@@ -66,7 +66,7 @@
     "trainer": {
         "type": "DefaultTrainer",
         "args": {
-            "epochs": 20,
+            "epochs": 40,
             "save_dir": "saved_full",
             "save_period": 20,
             "verbosity": 2,

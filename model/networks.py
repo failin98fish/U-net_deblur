@@ -873,53 +873,59 @@ class SEBlock(nn.Module):
         se_weight = self.se(x).unsqueeze(-1).unsqueeze(-1)  # (N, C, 1, 1)
         return x * se_weight  # (N, C, H, W)
 
-class RNNLikeNetwork(nn.Module):
-    def __init__(self, edge_feature_extraction, fuse_module, init_dim):
+class EventFusionNetwork(nn.Module):
+    def __init__(self, bg_feature_extractor, event_feature_extractor, fusion_module, init_dim):
         """
-        初始化模型。
-        :param edge_feature_extraction: 特征提取模块，用于B和E的每个channel。
-        :param fuse_module: 融合模块，用于将特征进行融合。
+        初始化事件融合网络。
+        :param bg_feature_extractor: 背景特征提取模块,用于提取B的特征。
+        :param event_feature_extractor: 事件特征提取模块,用于提取E的每个channel的特征。
+        :param fusion_module: 融合模块,用于将背景特征和事件特征进行融合。
         :param init_dim: 特征融合后的维度。
         """
-        super(RNNLikeNetwork, self).__init__()
-        self.edge_feature_extraction = edge_feature_extraction
-        self.fuse_module = fuse_module
-        # 增加一个额外的特征提取模块，用于从E的每个channel提取特征
-        self.motion_feature_extraction = nn.Sequential(
+        super(EventFusionNetwork, self).__init__()
+        self.bg_feature_extractor = bg_feature_extractor
+        self.event_feature_extractor = event_feature_extractor
+        self.fusion_module = fusion_module
+        # 增加一个额外的特征提取模块,用于从E的每个channel提取特征
+        self.motion_feature_extractor = nn.Sequential(
             nn.Conv2d(1, init_dim // 4, kernel_size=7, stride=1, padding=3),
             nn.InstanceNorm2d(init_dim // 4),
             nn.ReLU(True),
-            # 你需要添加Chuncked_Self_Attn_FM和DenseBlock的代码
         )
 
     def forward(self, B, E):
         """
         网络的前向传播。
-        :param B: 背景特征，shape为[batch_size, 1, height, width]
-        :param E: 边缘特征，shape为[batch_size, channel, height, width]
+        :param B: 背景图像,shape为[batch_size, 1, height, width]
+        :param E: 事件图像,shape为[batch_size, num_bins, height, width]
         :return: 融合后的特征
         """
-        batch_size, channels, height, width = E.size()
-        print("channel:", channels)
-        print("B shape:", B.shape)
-        # 特征提取B
-        B_feature = self.edge_feature_extraction(B)
+        batch_size, num_bins, height, width = E.size()
+        print("Number of event bins:", num_bins)
+        print("Background image shape:", B.shape)
+        
+        # 提取背景图像的特征
+        bg_feature = self.bg_feature_extractor(B)
+        
+        # 初始化融合特征为背景特征
+        EB_feature = bg_feature
+        print("Initial fused feature shape:", EB_feature.shape)
 
-        # 初始化EB_feature为B的特征
-        EB_feature = B_feature
-        print("EB_feature 1st shape:", EB_feature.shape)
-
-        # 对E中的每个channel进行处理
-        for i in range(channels):
-            # 提取E中的第i个channel的特征
+        # 对E中的每个时间bin进行处理
+        for i in range(num_bins):
             print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-            E_feature = self.edge_feature_extraction(E[:, i, :, :].unsqueeze(1))
-            print("E_feature shape before:", E_feature.shape)
-            # 将E特征与EB特征进行concatenate
-            EB_feature = torch.cat((EB_feature, E_feature), dim=1)
-            print("EB_feature shape concatenate:", EB_feature.shape)
-            # 使用融合模块融合特征
-            EB_feature = self.fuse_module(EB_feature)
-            print("EB_feature shape fused:", EB_feature.shape)
+            # 提取当前时间bin的事件特征
+            event_feature = self.event_feature_extractor(E[:, i, :, :].unsqueeze(1))
+            print("Event feature shape:", event_feature.shape)
+            
+            # 融合当前的背景特征和事件特征
+            fusion_input = torch.cat((EB_feature, event_feature), dim=1)
+            EB_feature = self.fusion_module(fusion_input)
+            print("Fused feature shape:", EB_feature.shape)
+            
+            # 将融合后的特征作为下一次融合的输入(类似ResNet的identity映射)
+            EB_feature = EB_feature + bg_feature
+            print("Updated fused feature shape:", EB_feature.shape)
 
         return EB_feature
+    

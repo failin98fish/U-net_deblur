@@ -7,7 +7,7 @@ from base.base_model import BaseModel
 from utils.util import torch_laplacian
 
 from .networks import get_norm_layer, Chuncked_Self_Attn_FM, DenseBlock, SEBlock, AttentionUnetBackbone, \
-    AutoencoderBackbone, RNNLikeNetwork
+    AutoencoderBackbone, EventFusionNetwork
 """
         for learning S (sharp image (APS or RGB))
 
@@ -58,7 +58,7 @@ class DefaultModel(BaseModel):
             nn.Conv2d(init_dim // 2, init_dim // 4, kernel_size=1, stride=1, bias=use_bias),
             SEBlock(init_dim // 4, 8)
         )
-        self.E_B_extraction_fusion = RNNLikeNetwork(self.edge_feature_extraction,self.fuse1, init_dim)
+        self.E_B_extraction_fusion = EventFusionNetwork(self.edge_feature_extraction, self.edge_feature_extraction, self.fuse1, init_dim)
         
         #optical flow, bidirectional
         self.flow_block = nn.Sequential(
