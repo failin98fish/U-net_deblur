@@ -49,6 +49,7 @@ def plot_metrics(data_dict, epoch, max_epochs, save_path):
         plt.savefig(save_path)
 
     plt.pause(0.01)
+    plt.close
 
 # 假定EB_feature是一个形状为[1, 32, 256, 320]的tensor
 # EB_feature = ...
@@ -116,4 +117,24 @@ def show_tensor_images(tensor):
         plt.imshow(tensor_rgb[i].permute(1, 2, 0).cpu().numpy())  # 转换为(H, W, 3)用于显示
         plt.axis('off')
     plt.show()
-    
+
+def plot_grayscale_image(b, bi, bgt):
+    # b, bi, bgt: tensors with shape [1, 1, H, W]
+    images = [b.detach().squeeze().cpu().numpy(),
+              bi.detach().squeeze().cpu().numpy(),
+              bgt.detach().squeeze().cpu().numpy()]
+
+    titles = ['bi', 'bipred', 'bigt']
+
+    fig, axs = plt.subplots(1, 3, figsize=(12, 4))
+
+    for i, (image, title) in enumerate(zip(images, titles)):
+        x = range(image.shape[1])
+        y = image[0].flatten()
+        axs[i].plot(x, y, color='black')
+        axs[i].set_title(title)
+        axs[i].axis('off')
+
+    plt.show()
+    plt.pause(0.01)
+    plt.close()

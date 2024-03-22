@@ -17,7 +17,7 @@ if __name__ == '__main__':
     pids = []
     RGB_dir = 'RealBlurSourceFiles'
     num = len(os.listdir(RGB_dir))
-    cores = os.cpu_count()
+    cores = 2
     chunk = math.ceil(num / cores)
     for i in range(cores):
         p = Process(target=exe, args=(i * chunk, chunk, mode))

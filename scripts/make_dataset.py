@@ -360,7 +360,7 @@ if __name__ == '__main__':
     }
 
     saver_args = {
-        'out_base_dir': './data/' + mode,
+        'out_base_dir': '/mnt/disk/msc2024/runzhuw/data/' + mode,
         'subdir_mapping': {
             'share': {
                 'APS_blur': '.png',

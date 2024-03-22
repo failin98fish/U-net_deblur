@@ -3,7 +3,7 @@ import torch
 from torchvision.utils import make_grid
 
 from base.base_trainer import BaseTrainer
-from plot.plot import plot_tensor_images, tensor_to_rgb, show_tensor_images
+from plot.plot import show_tensor_images, plot_grayscale_image
 from utils.util import visualize_flow_torch
 
 
@@ -85,6 +85,7 @@ class DefaultTrainer(BaseTrainer):
             model_loss = self.loss(F_pred, Bi_clean_pred, S_pred, F_gt, Bi_clean_gt, S_gt)
             model_loss.backward()
             self.optimizer.step()
+
             # if batch_idx == 39:
             #     F_vis = visualize_flow_torch(F_pred)
             #     print("Fvis shape:", F_vis.shape)
@@ -95,6 +96,8 @@ class DefaultTrainer(BaseTrainer):
             #     Fgt_vis = visualize_flow_torch(F_gt)
             #     print("Fgt_vis shape:", Fgt_vis.shape)
             #     show_tensor_images(Fgt_vis)
+            # if batch_idx == 39:
+            #     plot_grayscale_image(Bi, Bi_clean_pred, Bi_clean_gt)
 
             # calculate total loss/metrics and add scalar to tensorboard
             self.writer.add_scalar('loss', model_loss.item())
