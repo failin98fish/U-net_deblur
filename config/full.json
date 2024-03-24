@@ -1,15 +1,15 @@
 {
     "name": "default",
-    "n_gpu": 1,
+    "n_gpu": 2,
     "module": "full",
     "data_loader": {
         "type": "TrainDataLoader",
         "args": {
-            "data_dir": "data/train",
-            "batch_size": 1,
+            "data_dir": "/mnt/disk/msc2024/runzhuw/data/train",
+            "batch_size": 6,
             "shuffle": true,
             "validation_split": 0.0,
-            "num_workers": 1
+            "num_workers": 2
         }
     },
     "model": {
@@ -72,7 +72,7 @@
             "verbosity": 2,
             "monitor": "off",
             "tensorboardX": true,
-            "log_dir": "saved_full/runs"
+            "log_dir": "/mnt/disk/msc2024/runzhuw/saved_full/runs"
         }
     }
 }
