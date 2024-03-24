@@ -7,7 +7,7 @@ from base.base_model import BaseModel
 from utils.util import torch_laplacian
 
 from .networks import get_norm_layer, Chuncked_Self_Attn_FM, DenseBlock, SEBlock, AttentionUnetBackbone, \
-    AutoencoderBackbone, EventFusionNetwork
+    AutoencoderBackbone, EventFusionNetwork, AKConv
 """
         for learning S (sharp image (APS or RGB))
 
@@ -34,7 +34,8 @@ class DefaultModel(BaseModel):
 
         self.rgb = rgb
         self.edge_feature_extraction = nn.Sequential(
-            nn.Conv2d(1, init_dim // 4, kernel_size=7, stride=1, padding=3, bias=use_bias),
+            # nn.Conv2d(1, init_dim // 4, kernel_size=7, stride=1, padding=3, bias=use_bias),
+            AKConv(1, init_dim // 4, num_param=4, stride=1, bias=None),
             nn.InstanceNorm2d(init_dim // 4),
             nn.ReLU(True),
             Chuncked_Self_Attn_FM(init_dim // 4, latent_dim=8, subsample=True, grid=grid),
@@ -56,6 +57,7 @@ class DefaultModel(BaseModel):
         # )
         self.fuse1 = nn.Sequential(
             nn.Conv2d(init_dim // 2, init_dim // 4, kernel_size=1, stride=1, bias=use_bias),
+            # AKConv(init_dim // 2, init_dim // 4, num_param=4, stride=1, bias=None),
             SEBlock(init_dim // 4, 8)
         )
         self.E_B_extraction_fusion = EventFusionNetwork(self.edge_feature_extraction, self.edge_feature_extraction, self.fuse1, init_dim)
@@ -102,13 +104,15 @@ class DefaultModel(BaseModel):
                 nn.Tanh()
             )
             self.Bi_feature_extraction = nn.Sequential(
-                nn.Conv2d(1, init_dim // 4, kernel_size=7, stride=1, padding=3, bias=use_bias),
+                # nn.Conv2d(1, init_dim // 4, kernel_size=7, stride=1, padding=3, bias=use_bias),
+                AKConv(1, init_dim // 4, num_param=4, stride=1, bias=None),
                 norm_layer(init_dim // 4),
                 nn.ReLU(True)
             )
 
         self.fuse2 = nn.Sequential(
             nn.Conv2d(init_dim // 2, init_dim, kernel_size=1, stride=1, bias=use_bias),
+            # AKConv(init_dim // 2, init_dim, num_param=4, stride=1, bias=None),
             SEBlock(init_dim, 8)
         )
         self.backbone = AttentionUnetBackbone(init_dim, output_nc=init_dim, n_downsampling=3,
@@ -131,7 +135,7 @@ class DefaultModel(BaseModel):
         # E_feature = self.E_feature_extraction(E)
         # print("E_feature shape:", E_feature.shape)
         # Assuming B and E are already preprocessed to have the correct number of channels
-        motion_clues_test = self.E_B_extraction_fusion(B, E)
+        motion_clues_test = self.E_B_extraction_fusion(torch_laplacian(B), E)
         print("motion_clues_test shape:", motion_clues_test.shape)
 
         # # Fuse the features and print the shape

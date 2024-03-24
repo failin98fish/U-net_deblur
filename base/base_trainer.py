@@ -9,7 +9,7 @@ import torch
 from utils import util
 from utils.visualization import WriterTensorboardX
 from model.networks import init_weights
-from plot.plot import plot_metrics
+# from plot.plot import plot_metrics
 
 
 class BaseTrainer:
@@ -112,8 +112,6 @@ class BaseTrainer:
                 if self.verbosity >= 1:
                     for key, value in log.items():
                         self.logger.info('    {:15s}: {}'.format(str(key), value))
-                    plot_save_path = os.path.join(self.checkpoint_dir, 'plot{}.png'.format(epoch))
-                    plot_metrics(log,epoch,self.epochs,plot_save_path)
 
             # evaluate model performance according to configured metric, save best checkpoint as model_best
             is_best = False
