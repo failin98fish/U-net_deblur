@@ -131,7 +131,7 @@ class DefaultModel(BaseModel):
         # E_feature = self.E_feature_extraction(E)
         # print("E_feature shape:", E_feature.shape)
         # Assuming B and E are already preprocessed to have the correct number of channels
-        motion_clues_test = self.E_B_extraction_fusion(B, E)
+        motion_clues_test = self.E_B_extraction_fusion(torch_laplacian(B), E)
         print("motion_clues_test shape:", motion_clues_test.shape)
 
         # # Fuse the features and print the shape
