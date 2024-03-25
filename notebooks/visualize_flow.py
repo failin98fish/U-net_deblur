@@ -9,6 +9,8 @@ def viz_flow(flow):
     # 饱和度S：取值范围为0.0～1.0
     # 亮度V：取值范围为0.0(黑色)～1.0(白色)
     h, w = flow.shape[:2]
+    print("flow.shape")
+    print(flow.shape)
     hsv = np.zeros((h, w, 3), np.uint8)
     mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
     hsv[..., 0] = ang * 180 / np.pi / 2
@@ -21,19 +23,22 @@ def viz_flow(flow):
 
 
 def viz_multiple_flow(multiple_flow):
+    print(multiple_flow.shape)
     # multiple_flow: (H, W, 2*N)
     H, W, C = multiple_flow.shape
     N = C // 2
     bgrs = []
     for i in range(N):
         flow = multiple_flow[:, :, 2 * i:2 * (i + 1)]
+        print(2 * i)
+        print(2 * (i + 1))
         bgr_flow = viz_flow(flow)
         bgrs.append(bgr_flow)
     return bgrs
 
 
 for f in os.listdir(os.getcwd()):
-    if f.endswith('.npy'):
+    if f.endswith('scene001_000.npy'):
         name = f.split('.')[0]
         multiple_flow = np.load(f)
         bgrs = viz_multiple_flow(multiple_flow)
