@@ -68,21 +68,21 @@ class DefaultTrainer(BaseTrainer):
             S_gt = sample['S'].to(self.device)
 
             # get network output
-            F_pred, Bi_clean_pred, S_pred = self.model(E, B, Bi)
+            flow, log_diff, S_pred = self.model(B, E)
 
             # visualization
             with torch.no_grad():
                 if batch_idx % 100 == 0:
                     # save images to tensorboardX
-                    self.writer.add_image('Bi', make_grid(Bi))
-                    self.writer.add_image('Bi_clean_pred', make_grid(Bi_clean_pred))
-                    self.writer.add_image('Bi_clean_gt', make_grid(Bi_clean_gt))
+                    # self.writer.add_image('Bi_clean_pred', make_grid(Bi_clean_pred))
+                    self.writer.add_image('log_diff', make_grid(log_diff))
                     self.writer.add_image('S_pred', make_grid(S_pred))
                     self.writer.add_image('S_gt', make_grid(S_gt))
+                    self.writer.add_image('Blurred', make_grid(B))
 
             # train model
             self.optimizer.zero_grad()
-            model_loss = self.loss(F_pred, Bi_clean_pred, S_pred, F_gt, Bi_clean_gt, S_gt)
+            model_loss = self.loss(flow, F_gt, S_pred, S_gt)
             model_loss.backward()
             self.optimizer.step()
 

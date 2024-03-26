@@ -2,27 +2,30 @@ import functools
 
 import torch
 import torch.nn as nn
-
+from .networks import Encoder, Denoiser, Decoder, get_norm_layer
 from base.base_model import BaseModel
 from utils.util import torch_laplacian
 
-from .networks import get_norm_layer, Chuncked_Self_Attn_FM, DenseBlock, SEBlock, AttentionUnetBackbone, \
-    AutoencoderBackbone, EventFusionNetwork, AKConv
-"""
-        for learning S (sharp image (APS or RGB))
-
-        as input:
-        E: events (13 channel voxel grid), as float32
-        B: blur APS, [0, 1], as float32
-        Bi: blur image (APS or RGB), [0, 1], as float32
-
-        as target:
-        Bi_clean: clean blur image (APS or RGB), [0, 1], as float32
-        F: bi-directional optical flow, as float32
-        S: sharp image (APS or RGB), [0, 1] float, as float32
-"""
-
+# class DeblurModel(nn.Module):
+#     """
+#     去模糊模型,包括编码器、去噪器和解码器  
+#     输入:
+#         - blurred_image (N, 1, 256, 320)
+#         - events (N, 13, 256, 320)
+#     输出: 
+#         - log_diff (N, 1, 256, 320)  
+#         - sharp_image (N, 1, 256, 320)
+#     """
 class DefaultModel(BaseModel):
+    """
+    去模糊模型,包括编码器、去噪器和解码器,使用skip connection
+    输入:
+        - blurred_image (N, 1, 256, 320)
+        - events (N, 13, 256, 320)
+    输出:
+        - log_diff (N, 1, 256, 320)
+        - sharp_image (N, 1, 256, 320)
+    """
     def __init__(self, init_dim=64, n_ev=13, grid=(8, 10), norm_type='instance', use_dropout=False, rgb=False):
         super(DefaultModel, self).__init__()
 
@@ -33,131 +36,77 @@ class DefaultModel(BaseModel):
             use_bias = norm_layer != nn.BatchNorm2d
 
         self.rgb = rgb
-        self.edge_feature_extraction = nn.Sequential(
-            # nn.Conv2d(1, init_dim // 4, kernel_size=7, stride=1, padding=3, bias=use_bias),
-            AKConv(1, init_dim // 4, num_param=4, stride=1, bias=None),
-            nn.InstanceNorm2d(init_dim // 4),
-            nn.ReLU(True),
-            Chuncked_Self_Attn_FM(init_dim // 4, latent_dim=8, subsample=True, grid=grid),
-            DenseBlock(init_dim // 4, growth_rate=32, n_blocks=3)
-        )
-        # self.B_edge_feature_extraction = nn.Sequential(
-        #     nn.Conv2d(1, init_dim // 4, kernel_size=7, stride=1, padding=3, bias=use_bias),
-        #     nn.InstanceNorm2d(init_dim // 4),
-        #     nn.ReLU(True),
-        #     Chuncked_Self_Attn_FM(init_dim // 4, latent_dim=8, subsample=True, grid=grid),
-        #     DenseBlock(init_dim // 4, growth_rate=32, n_blocks=3)
-        # )
-        # self.E_feature_extraction = nn.Sequential(
-        #     nn.Conv2d(n_ev, init_dim // 4, kernel_size=7, stride=1, padding=3, bias=use_bias),
-        #     nn.InstanceNorm2d(init_dim // 4),
-        #     nn.ReLU(True),
-        #     Chuncked_Self_Attn_FM(init_dim // 4, latent_dim=8, subsample=True, grid=grid),
-        #     DenseBlock(init_dim // 4, growth_rate=32, n_blocks=3)
-        # )
-        self.fuse1 = nn.Sequential(
-            nn.Conv2d(init_dim // 2, init_dim // 4, kernel_size=1, stride=1, bias=use_bias),
-            # AKConv(init_dim // 2, init_dim // 4, num_param=4, stride=1, bias=None),
-            SEBlock(init_dim // 4, 8)
-        )
-        self.E_B_extraction_fusion = EventFusionNetwork(self.edge_feature_extraction, self.edge_feature_extraction, self.fuse1, init_dim)
-        
+        self.encoder_b = nn.ModuleList([
+            Encoder(1, 32),   # (N, 1, 256, 320) -> down(N, 32, 128, 160), self(N, 32, 256, 320)
+            Encoder(32, 64),  # (N, 32, 128, 160) -> (N, 64, 64, 80), (N, 64, 128, 160)
+            Encoder(64, 128), # (N, 64, 64, 80) -> (N, 128, 32, 40), (N, 128, 64, 80)
+            Encoder(128, 256) # (N, 128, 32, 40) -> (N, 256, 16, 20), (N, 256, 32, 40)
+        ])
+        self.encoder_e = nn.ModuleList([
+            Encoder(13, 32),  # (N, 13, 256, 320) -> (N, 32, 128, 160), (N, 32, 256, 320)
+            Encoder(32, 64),  # (N, 32, 128, 160) -> (N, 64, 64, 80), (N, 64, 128, 160)  
+            Encoder(64, 128), # (N, 64, 64, 80) -> (N, 128, 32, 40), (N, 128, 64, 80)
+            Encoder(128, 256) # (N, 128, 32, 40) -> (N, 256, 16, 20), (N, 256, 32, 40)
+        ])
+        self.denoiser = Denoiser(512, 256) # (N, 512, 16, 20) -> (N, 256, 16, 20)
+        self.decoder = nn.ModuleList([
+            Decoder(256, 128), # (N, 256, 16, 20) -> (N, 128, 32, 40)
+            Decoder(128, 64),  # (N, 128, 32, 40) -> (N, 64, 64, 80)
+            Decoder(64, 32),   # (N, 64, 64, 80) -> (N, 32, 128, 160)
+            Decoder(32, 1),   # (N, 64, 64, 80) -> (N, 32, 128, 160)
+        ])
+        self.up = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True) # (N, 1, 128, 160) -> (N, 1, 256, 320)
+            )
         #optical flow, bidirectional
         self.flow_block = nn.Sequential(
+            nn.Conv2d(1, init_dim // 8, kernel_size=3, stride=1, padding=1),
+            norm_layer(init_dim // 8),
+            nn.ReLU(True),
+            nn.Conv2d(init_dim // 8, init_dim // 4, kernel_size=1, stride=1),
+            norm_layer(init_dim // 4),
+            nn.ReLU(True),
             nn.Conv2d(init_dim // 4, init_dim // 2, kernel_size=1, stride=1),
             norm_layer(init_dim // 2),
             nn.ReLU(True),
-            nn.Conv2d(init_dim // 2, init_dim // 4, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(init_dim // 2, init_dim // 4, kernel_size=1, stride=1),
             norm_layer(init_dim // 4),
             nn.ReLU(True),
             nn.Conv2d(init_dim // 4, init_dim // 8, kernel_size=1, stride=1),
             norm_layer(init_dim // 8),
             nn.ReLU(True),
             nn.Conv2d(init_dim // 8, 4, kernel_size=1, stride=1),
-            # nn.Conv2d(init_dim // 8, init_dim // 2, kernel_size=1, stride=1),
             nn.ReLU(True)
         )
 
-        if self.rgb:
-            self.Bi_denoise = nn.Sequential(
-                AutoencoderBackbone(3, output_nc=init_dim, n_downsampling=2, n_blocks=4, norm_type=norm_type,
-                                    use_dropout=use_dropout),
-                nn.Conv2d(init_dim, 3, kernel_size=1, stride=1, bias=use_bias),
-                nn.Tanh()
-            )
-            self.Bi_feature_extraction = nn.Sequential(
-                nn.Conv2d(3, init_dim // 2, kernel_size=7, stride=1, padding=3, bias=use_bias),
-                norm_layer(init_dim // 2),
-                nn.ReLU(True)
-            )
-            self.up = nn.Sequential(
-                nn.ConvTranspose2d(init_dim // 2, init_dim // 2, kernel_size=3, stride=3, padding=1, output_padding=2,
-                                   bias=use_bias),
-                norm_layer(init_dim // 2),
-                nn.ReLU(True)
-            )
-        else:
-            self.Bi_denoise = nn.Sequential(
-                AutoencoderBackbone(1, output_nc=init_dim, n_downsampling=2, n_blocks=4, norm_type=norm_type,
-                                    use_dropout=use_dropout),
-                nn.Conv2d(init_dim, 1, kernel_size=1, stride=1, bias=use_bias),
-                nn.Tanh()
-            )
-            self.Bi_feature_extraction = nn.Sequential(
-                # nn.Conv2d(1, init_dim // 4, kernel_size=7, stride=1, padding=3, bias=use_bias),
-                AKConv(1, init_dim // 4, num_param=4, stride=1, bias=None),
-                norm_layer(init_dim // 4),
-                nn.ReLU(True)
-            )
+    def forward(self, blurred_image, events):
+        b_code = blurred_image
+        e_code = events
+        b_codes = []
+        e_codes = []
 
-        self.fuse2 = nn.Sequential(
-            nn.Conv2d(init_dim // 2, init_dim, kernel_size=1, stride=1, bias=use_bias),
-            # AKConv(init_dim // 2, init_dim, num_param=4, stride=1, bias=None),
-            SEBlock(init_dim, 8)
-        )
-        self.backbone = AttentionUnetBackbone(init_dim, output_nc=init_dim, n_downsampling=3,
-                                              use_conv_to_downsample=False, norm_type=norm_type,
-                                              use_dropout=use_dropout, mode='res-bottleneck')
-        self.out_block = nn.Sequential(
-            nn.Conv2d(init_dim, 1, kernel_size=1, stride=1, bias=use_bias),
-            nn.Tanh()
-        )
+        for b_enc, e_enc in zip(self.encoder_b, self.encoder_e):
+            b_code, b_skip = b_enc(b_code)
+            print("b_code.shape", b_code.shape, "b_skip.shape", b_skip.shape)
+            e_code, e_skip = e_enc(e_code)
+            b_codes.append(b_skip)
+            e_codes.append(e_skip)
 
-    def forward(self, E, B, Bi):
-       # Perform Laplace transform and edge feature extraction on B
-        print("E shape:", E.shape)
-        print("B shape:", B.shape)
-        print("Bi shape:", Bi.shape)
-        # B_edge_feature = self.B_edge_feature_extraction(torch_laplacian(B))
-        # print("B_edge_feature shape:", B_edge_feature.shape)
+        code = torch.cat([b_code, e_code], 1)
+        print("code.shape before", code.shape) # [1, 256, 16, 20])
+        code = self.denoiser(code)
+        print("code.shape", code.shape) # [1, 256, 16, 20])
 
-        # # Extract features from E
-        # E_feature = self.E_feature_extraction(E)
-        # print("E_feature shape:", E_feature.shape)
-        # Assuming B and E are already preprocessed to have the correct number of channels
-        motion_clues_test = self.E_B_extraction_fusion(torch_laplacian(B), E)
-        print("motion_clues_test shape:", motion_clues_test.shape)
+        for dec, b_skip, e_skip in zip(self.decoder, reversed(b_codes), reversed(e_codes)):
+            print("++++++++++++++++++++++++++++++++++++++++++++++++++")
+            skips = torch.cat([b_skip, e_skip], 1)
+            print("skips", skips.shape)
+            code = dec(code, skips)
+            print("code.shape", code.shape)
+        print("code.shape before",code.shape)
+        flow = self.flow_block(code)
+        # code = self.up(code)
 
-        # # Fuse the features and print the shape
-        # motion_clues = self.fuse1(torch.cat((B_edge_feature, E_feature), dim=1))
-        # print("motion_clues shape:", motion_clues.shape)
-
-        # Assuming self.flow_block is defined elsewhere:
-        # Compute flow and print its shape
-        F = self.flow_block(motion_clues_test)
-        print("F shape:", F.shape)
-
-        if self.rgb:
-            motion_clues = self.up(motion_clues)
-
-        Bi_gamma = Bi ** (1 / 2.2)
-        Bi_clean = torch.clamp(self.Bi_denoise(Bi_gamma) + Bi_gamma, min=0, max=1) ** 2.2
-        '''使用torch.clamp函数对这个新的张量进行裁剪，将其中小于0的元素裁剪为0，大于1的元素裁剪为1。这样可以确保张量的取值范围在0到1之间'''
-        Bi_feature = self.Bi_feature_extraction(Bi_clean)
-        print("Bi_feature", Bi_feature.shape)
-        print("motion_clues_test", motion_clues_test.shape)
-        fused_result=self.fuse2(torch.cat((Bi_feature, motion_clues_test), dim=1))
-        backbone_out = self.backbone(fused_result)
-        # backbone_out = self.backbone(self.fuse2(torch.cat((Bi_feature, F), dim=1)))
-        S = torch.clamp(self.out_block(backbone_out) + Bi_clean, min=0, max=1)
-        return F, Bi_clean, S
+        log_diff = code
+        sharp_image = log_diff + blurred_image
+        return flow, log_diff, sharp_image
