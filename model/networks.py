@@ -74,22 +74,37 @@ class Encoder(nn.Module):
         print("down:", down.shape)
         return down, x
 
-class Denoiser(nn.Module):
-    """
-    用于去除噪声事件
-    输入: (N, C_in, H, W)
-    输出: (N, C_out, H, W)
-    """
-    def __init__(self, in_channels, out_channels):
-        super(Denoiser, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
-        )
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, padding=padding)
 
     def forward(self, x):
-        return self.conv(x)
+        residual = x
+        out = self.conv1(x)
+        out = self.relu(out)
+        out = self.conv2(out)
+        out += residual
+        out = self.relu(out)
+        return out
+
+class Denoiser(nn.Module):
+    def __init__(self, in_channels, out_channels, num_residual_blocks=5):
+        super(Denoiser, self).__init__()
+        self.conv_in = nn.Conv2d(in_channels, 64, kernel_size=3, padding=1)
+        self.residual_blocks = nn.ModuleList()
+        for _ in range(num_residual_blocks):
+            self.residual_blocks.append(ResidualBlock(64, 64))
+        self.conv_out = nn.Conv2d(64, out_channels, kernel_size=3, padding=1)
+
+    def forward(self, x):
+        out = self.conv_in(x)
+        for block in self.residual_blocks:
+            out = block(out)
+        out = self.conv_out(out)
+        return out
 
 class Decoder(nn.Module):
     """

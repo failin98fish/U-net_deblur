@@ -78,6 +78,7 @@ class DefaultModel(BaseModel):
             nn.Conv2d(init_dim // 8, 4, kernel_size=1, stride=1),
             nn.ReLU(True)
         )
+        self.tanh = nn.Tanh()
 
     def forward(self, blurred_image, events):
         b_code = blurred_image
@@ -106,7 +107,14 @@ class DefaultModel(BaseModel):
         print("code.shape before",code.shape)
         flow = self.flow_block(code)
         # code = self.up(code)
+        log_diff = torch.neg(code)
+        log_diff = self.tanh(log_diff)
+        # 获取张量中的最大值
+        max_value = torch.max(log_diff)
+        print("最大值:", max_value.item())
 
-        log_diff = code
+        # 获取张量中的最小值
+        min_value = torch.min(log_diff)
+        print("最小值:", min_value.item())
         sharp_image = log_diff + blurred_image
         return flow, log_diff, sharp_image
