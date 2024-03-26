@@ -25,7 +25,7 @@ def infer_default(rgb):
             Bi = sample['Bi'].to(device)
 
             # get network output
-            F_pred, S_pred, Bi_clean_pred = model(B, E)
+            F_pred, Bi_clean_pred, S_pred = model(E, B, Bi)
 
             if rgb:
                 S_pred_numpy = S_pred.squeeze().cpu().numpy().transpose(1, 2, 0)
