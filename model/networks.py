@@ -15,10 +15,12 @@ def init_weights(m):
             nn.init.zeros_(m.bias)
     if isinstance(m, nn.BatchNorm2d):
         nn.init.normal_(m.weight, 1, 0.02)
-        nn.init.zeros_(m.bias)
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
     if isinstance(m, nn.Linear):
         nn.init.xavier_uniform_(m.weight)
-        nn.init.zeros_(m.bias)
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
 
 
 def get_norm_layer(norm_type='instance'):
@@ -30,6 +32,35 @@ def get_norm_layer(norm_type='instance'):
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
 
+class GlobalAvgPool(nn.Module):
+    """(N,C,H,W) -> (N,C)"""
+
+    def __init__(self):
+        super(GlobalAvgPool, self).__init__()
+
+    def forward(self, x):
+        N, C, H, W = x.shape
+        return x.view(N, C, -1).mean(-1)
+    
+class SEBlock(nn.Module):
+    """(N,C,H,W) -> (N,C,H,W)"""
+
+    def __init__(self, in_channel, r):
+        super(SEBlock, self).__init__()
+        self.se = nn.Sequential(
+            GlobalAvgPool(),
+            nn.Linear(in_channel, in_channel // r),
+            nn.ReLU(inplace=True),
+            nn.Linear(in_channel // r, in_channel),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        se_weight = self.se(x).unsqueeze(-1).unsqueeze(-1)  # (N, C, 1, 1)
+        # print(se_weight.shape)
+        # print((x * se_weight).shape)
+        return x * se_weight  # (N, C, H, W)
+    
 class DenseBlock(nn.Module):
     """
     实现DenseNet中的密集连接结构
@@ -40,12 +71,15 @@ class DenseBlock(nn.Module):
         super(DenseBlock, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.InstanceNorm2d(out_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.InstanceNorm2d(out_channels),
             nn.ReLU(inplace=True)
         )
         self.convhalf = nn.Sequential(
             nn.Conv2d(out_channels + in_channels, out_channels, kernel_size=3, padding=1),
+            nn.InstanceNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
 
@@ -68,10 +102,10 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         x = self.dense(x)
-        print("x:", x.shape)
+        # print("x:", x.shape)
         
         down = self.down(x)
-        print("down:", down.shape)
+        # print("down:", down.shape)
         return down, x
 
 class ResidualBlock(nn.Module):
@@ -79,6 +113,7 @@ class ResidualBlock(nn.Module):
         super(ResidualBlock, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding)
         self.relu = nn.ReLU(inplace=True)
+        nn.InstanceNorm2d(out_channels),
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, padding=padding)
 
     def forward(self, x):
@@ -117,18 +152,21 @@ class Decoder(nn.Module):
         self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
         self.conv = nn.Sequential(
             nn.Conv2d(out_channels*2, out_channels, kernel_size=3, padding=1),
+            nn.InstanceNorm2d(out_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
         )
         self.skipdown = nn.Sequential(
             nn.Conv2d(in_channels*2, out_channels, kernel_size=3, padding=1),
+            nn.InstanceNorm2d(out_channels),
+            nn.ReLU(inplace=True),
         )
 
     def forward(self, encoded, skip):
         encoded = self.up(encoded)
         skip = self.skipdown(skip)
-        print("encoded:", encoded.shape)
-        print("skip:", skip.shape)
+        # print("encoded:", encoded.shape)
+        # print("skip:", skip.shape)
         x = torch.cat([encoded, skip], 1)
         print("x",x.shape)
         return self.conv(x)
