@@ -68,7 +68,8 @@ class DefaultTrainer(BaseTrainer):
             S_gt = sample['S'].to(self.device)
 
             # get network output
-            flow, log_diff, S_pred = self.model(B, E)
+            log_diff, S_pred, code= self.model(B, E)
+            # flow, log_diff, S_pred, code= self.model(B, E)
 
             # visualization
             with torch.no_grad():
@@ -82,7 +83,7 @@ class DefaultTrainer(BaseTrainer):
 
             # train model
             self.optimizer.zero_grad()
-            model_loss = self.loss(flow, F_gt, S_pred, S_gt)
+            model_loss = self.loss(S_pred, S_gt, code)
             model_loss.backward()
             self.optimizer.step()
 

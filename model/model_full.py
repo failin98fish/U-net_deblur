@@ -105,16 +105,11 @@ class DefaultModel(BaseModel):
             code = dec(code, skips)
             print("code.shape", code.shape)
         print("code.shape before",code.shape)
-        flow = self.flow_block(code)
+        # flow = self.flow_block(code)
         # code = self.up(code)
+        # log_diff = code
         log_diff = torch.neg(code)
         log_diff = self.tanh(log_diff)
-        # 获取张量中的最大值
-        max_value = torch.max(log_diff)
-        print("最大值:", max_value.item())
-
-        # 获取张量中的最小值
-        min_value = torch.min(log_diff)
-        print("最小值:", min_value.item())
         sharp_image = log_diff + blurred_image
-        return flow, log_diff, sharp_image
+        # return flow, log_diff, sharp_image, log_diff
+        return log_diff, sharp_image, log_diff

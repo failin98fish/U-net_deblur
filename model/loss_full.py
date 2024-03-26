@@ -52,13 +52,17 @@ def reconstruction_loss(S_pred, S_gt, **kwargs):
     return l2_loss + perceptual_loss
 
 
-def loss_full(F_pred, F_gt, S_pred, S_gt, **kwargs):
-    Lf_lambda = kwargs.get('Lf_lambda', 1)
-    Lf = flow_loss(F_pred, F_gt, **kwargs['flow_loss']) * Lf_lambda
-    print('Lf:', Lf.item())
+def loss_full(S_pred, S_gt, code, **kwargs):
+    # Lf_lambda = kwargs.get('Lf_lambda', 1)
+    # Lf = flow_loss(F_pred, F_gt, **kwargs['flow_loss']) * Lf_lambda
+    # print('Lf:', Lf.item())
 
     Lr_lambda = kwargs.get('Lr_lambda', 1)
     Lr = reconstruction_loss(S_pred, S_gt, **kwargs['reconstruction_loss']) * Lr_lambda
     print('Lr:', Lr.item())
 
-    return Lf + Lr
+    loss_sharp = Lr
+    loss_log_diff = torch.mean(torch.abs(code))  # log difference的L1正则化项
+    loss = loss_sharp + 0.1 * loss_log_diff
+
+    return Lr + loss
