@@ -6,6 +6,11 @@ from .networks import Encoder, Denoiser, Decoder, SEBlock, get_norm_layer
 from base.base_model import BaseModel
 from utils.util import torch_laplacian
 
+def normalize_to_0_1(tensor):
+    min_val = torch.min(tensor)
+    max_val = torch.max(tensor)
+    normalized_tensor = (tensor - min_val) / (max_val - min_val)
+    return normalized_tensor
 # class DeblurModel(nn.Module):
 #     """
 #     去模糊模型,包括编码器、去噪器和解码器  
@@ -116,5 +121,7 @@ class DefaultModel(BaseModel):
         log_diff = torch.neg(code)
         log_diff = self.tanh(log_diff)
         sharp_image = log_diff + blurred_image
+        # sharp_image = normalize_to_0_1(sharp_image)
+        print(sharp_image.shape)
         # return flow, log_diff, sharp_image, log_diff
         return log_diff, sharp_image, log_diff

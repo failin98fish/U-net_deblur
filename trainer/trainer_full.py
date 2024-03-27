@@ -4,8 +4,7 @@ from torchvision.utils import make_grid
 
 from base.base_trainer import BaseTrainer
 from plot.plot import show_tensor_images, plot_grayscale_image
-from utils.util import visualize_flow_torch
-
+from utils.util import visualize_flow_torch, create_color_image
 
 class DefaultTrainer(BaseTrainer):
     """
@@ -70,13 +69,16 @@ class DefaultTrainer(BaseTrainer):
             # get network output
             log_diff, S_pred, code= self.model(B, E)
             # flow, log_diff, S_pred, code= self.model(B, E)
-
+            S_pred = torch.clamp(S_pred,min=0,max=1)
             # visualization
             with torch.no_grad():
                 if batch_idx % 100 == 0:
                     # save images to tensorboardX
                     # self.writer.add_image('Bi_clean_pred', make_grid(Bi_clean_pred))
-                    self.writer.add_image('log_diff', make_grid(log_diff))
+                    # self.writer.add_image('log_diff', make_grid(create_color_image(log_diff)))
+                    color_images = create_color_image(log_diff)
+                    grid = make_grid(color_images)
+                    self.writer.add_image('log_diff', grid)
                     self.writer.add_image('S_pred', make_grid(S_pred))
                     self.writer.add_image('S_gt', make_grid(S_gt))
                     self.writer.add_image('Blurred', make_grid(B))

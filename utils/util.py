@@ -1,12 +1,49 @@
 import os
-
+import cv2
 import torch
 import torch.nn.functional as F
 import numpy as np
-import cv2
+import matplotlib.pyplot as plt
+from torchvision.utils import make_grid
+# 其中-1对应蓝色，1对应红色，中间有平滑的过渡。
+def normalize(x):
+    return (x - x.min()) / (x.max() - x.min()) * 2 - 1
 
+def color_mapping(x):
+    x = (x + 1) / 2  # 将x映射到[0, 1]范围内
+    colors = np.zeros((x.shape[0], x.shape[1], 3))
+    
+    # 定义黄色和蓝色的RGB值
+    yellow = np.array([1, 0, 0])
+    blue = np.array([0, 0, 1])
+    
+    for i in range(x.shape[0]):
+        for j in range(x.shape[1]):
+            colors[i, j] = x[i, j] * yellow + (1 - x[i, j]) * blue
+    
+    return colors
 
-# Laplacian = torch.tensor([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=torch.float32).cuda()
+def create_color_image(log_diff):
+    if log_diff.is_cuda:
+        log_diff = log_diff.cpu()
+    log_diff = normalize(log_diff)
+    color_images = []
+    
+    for img in log_diff:
+        color_img = color_mapping(img.squeeze().numpy())
+        color_img = torch.from_numpy(color_img).permute(2, 0, 1)
+        color_images.append(color_img)
+    
+    return torch.stack(color_images)
+
+def apply_colormap(image_tensor, cmap):
+    # Assuming image_tensor is normalized between -1 and 1
+    if image_tensor.is_cuda:
+        image_tensor = image_tensor.cpu()
+    image_tensor = (image_tensor + 1) / 2  # Now between 0 and 1
+    image_tensor = cmap(image_tensor.numpy())  # Apply colormap (returns rgba)
+    image_tensor = torch.from_numpy(image_tensor)[..., :3]  # Drop alpha channel
+    return image_tensor
 
 
 def ensure_dir(path):
