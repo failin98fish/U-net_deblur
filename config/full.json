@@ -1,6 +1,6 @@
 {
     "name": "default",
-    "n_gpu": 2,
+    "n_gpu": 1,
     "module": "full",
     "data_loader": {
         "type": "TrainDataLoader",
@@ -8,8 +8,8 @@
             "data_dir": "/mnt/disk/msc2024/runzhuw/data/train",
             "batch_size": 4,
             "shuffle": true,
-            "validation_split": 0.0,
-            "num_workers": 2
+            "validation_split": 0.1,
+            "num_workers": 1
         }
     },
     "model": {
@@ -66,7 +66,7 @@
     "trainer": {
         "type": "DefaultTrainer",
         "args": {
-            "epochs": 40,
+            "epochs": 300,
             "save_dir": "saved_full",
             "save_period": 20,
             "verbosity": 2,

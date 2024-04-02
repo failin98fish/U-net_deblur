@@ -67,14 +67,14 @@ class DefaultTrainer(BaseTrainer):
             S_gt = sample['S'].to(self.device)
 
             # get network output
-            log_diff, S_pred, code= self.model(B, E)
+            Bi_clean_pred, log_diff, S_pred, code= self.model(B, Bi, E)
             # flow, log_diff, S_pred, code= self.model(B, E)
             S_pred = torch.clamp(S_pred,min=0,max=1)
             # visualization
             with torch.no_grad():
                 if batch_idx % 100 == 0:
                     # save images to tensorboardX
-                    # self.writer.add_image('Bi_clean_pred', make_grid(Bi_clean_pred))
+                    self.writer.add_image('Bi_clean_pred', make_grid(Bi_clean_pred))
                     # self.writer.add_image('log_diff', make_grid(create_color_image(log_diff)))
                     color_images = create_color_image(log_diff)
                     grid = make_grid(color_images)
@@ -85,7 +85,7 @@ class DefaultTrainer(BaseTrainer):
 
             # train model
             self.optimizer.zero_grad()
-            model_loss = self.loss(S_pred, S_gt, code)
+            model_loss = self.loss(Bi_clean_pred, Bi_clean_gt, S_pred, S_gt, code)
             model_loss.backward()
             self.optimizer.step()
 
@@ -165,17 +165,33 @@ class DefaultTrainer(BaseTrainer):
 
                 # infer and calculate the loss
                 # (N, C, H, W) GPU tensor
-                F_pred, Bi_clean_pred, S_pred = self.model(E, B, Bi)
-                loss = self.loss(F_pred, Bi_clean_pred, S_pred, F_gt, Bi_clean_gt, S_gt)
+                # F_pred, Bi_clean_pred, S_pred = self.model(E, B, Bi)
+                Bi_clean_pred, log_diff, S_pred, code= self.model(B, Bi, E)
+                S_pred = torch.clamp(S_pred,min=0,max=1)
+                with torch.no_grad():
+                    if batch_idx % 100 == 0:
+                        # save images to tensorboardX
+                        self.writer.add_image('Bi_clean_pred', make_grid(Bi_clean_pred))
+                        # self.writer.add_image('log_diff', make_grid(create_color_image(log_diff)))
+                        color_images = create_color_image(log_diff)
+                        grid = make_grid(color_images)
+                        self.writer.add_image('log_diff', grid)
+                        self.writer.add_image('S_pred', make_grid(S_pred))
+                        self.writer.add_image('S_gt', make_grid(S_gt))
+                        self.writer.add_image('Blurred', make_grid(B))
+                    
+                # loss = self.loss(F_pred, Bi_clean_pred, S_pred, F_gt, Bi_clean_gt, S_gt)
+                loss = self.loss(Bi_clean_pred, Bi_clean_gt, S_pred, S_gt, code)
 
                 # calculate total loss/metrics and add scalar to tensorboardX
                 self.writer.add_scalar('loss', loss.item())
+                # self.writer.add_scalar('val_loss', loss.item())
                 total_val_loss += loss.item()
                 total_val_metrics += self._eval_metrics(S_pred, S_gt)
 
         # add histogram of model parameters to the tensorboard
-        for name, p in self.model.named_parameters():
-            self.writer.add_histogram(name, p, bins='auto')
+        # for name, p in self.model.named_parameters():
+        #     self.writer.add_histogram(name, p, bins='auto')
 
         return {
             'val_loss': total_val_loss / len(self.valid_data_loader),

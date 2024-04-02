@@ -19,16 +19,16 @@ def flow_loss(F_pred, F_gt, **kwargs):
     return l1_loss + tv_loss
 
 
-# def denoise_loss(Bi_clean_pred, Bi_clean_gt, **kwargs):
-#     l1_loss_lambda = kwargs.get('l1_loss_lambda', 1)
-#     l1_loss = F.l1_loss(Bi_clean_pred, Bi_clean_gt) * l1_loss_lambda
-#     print('denoise_loss: l1_loss:', l1_loss.item())
+def denoise_loss(Bi_clean_pred, Bi_clean_gt, **kwargs):
+    l1_loss_lambda = kwargs.get('l1_loss_lambda', 1)
+    l1_loss = F.l1_loss(Bi_clean_pred, Bi_clean_gt) * l1_loss_lambda
+    print('denoise_loss: l1_loss:', l1_loss.item())
 
-#     l2_loss_lambda = kwargs.get('l2_loss_lambda', 1)
-#     l2_loss = F.mse_loss(Bi_clean_pred, Bi_clean_gt) * l2_loss_lambda
-#     print('denoise_loss: l2_loss:', l2_loss.item())
+    l2_loss_lambda = kwargs.get('l2_loss_lambda', 1)
+    l2_loss = F.mse_loss(Bi_clean_pred, Bi_clean_gt) * l2_loss_lambda
+    print('denoise_loss: l2_loss:', l2_loss.item())
 
-#     return l1_loss + l2_loss
+    return l1_loss + l2_loss
 
 
 def reconstruction_loss(S_pred, S_gt, **kwargs):
@@ -52,7 +52,7 @@ def reconstruction_loss(S_pred, S_gt, **kwargs):
     return l2_loss + perceptual_loss
 
 
-def loss_full(S_pred, S_gt, code, **kwargs):
+def loss_full(Bi_clean_pred, Bi_clean_gt, S_pred, S_gt, code, **kwargs):
     # Lf_lambda = kwargs.get('Lf_lambda', 1)
     # Lf = flow_loss(F_pred, F_gt, **kwargs['flow_loss']) * Lf_lambda
     # print('Lf:', Lf.item())
@@ -60,6 +60,10 @@ def loss_full(S_pred, S_gt, code, **kwargs):
     Lr_lambda = kwargs.get('Lr_lambda', 1)
     Lr = reconstruction_loss(S_pred, S_gt, **kwargs['reconstruction_loss']) * Lr_lambda
     print('Lr:', Lr.item())
+
+    Ld_lambda = kwargs.get('Ld_lambda', 1)
+    Ld = denoise_loss(Bi_clean_pred, Bi_clean_gt, **kwargs['denoise_loss']) * Ld_lambda
+    print('Ld:', Ld.item())
 
     loss_sharp = Lr
     loss_log_diff = torch.mean(torch.abs(code))  # log difference的L1正则化项

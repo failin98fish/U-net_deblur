@@ -170,3 +170,168 @@ class Decoder(nn.Module):
         x = torch.cat([encoded, skip], 1)
         print("x",x.shape)
         return self.conv(x)
+
+
+class Self_Attn_FM(nn.Module):
+    """ Self attention Layer for Feature Map dimension"""
+
+    def __init__(self, in_dim, latent_dim=8, subsample=True):
+        super(Self_Attn_FM, self).__init__()
+        self.channel_latent = in_dim // latent_dim
+        self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=self.channel_latent, kernel_size=1, stride=1)
+        self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=self.channel_latent, kernel_size=1, stride=1)
+        self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=self.channel_latent, kernel_size=1, stride=1)
+        self.out_conv = nn.Conv2d(in_channels=self.channel_latent, out_channels=in_dim, kernel_size=1, stride=1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+        self.softmax = nn.Softmax(dim=-1)
+
+        if subsample:
+            self.key_conv = nn.Sequential(
+                self.key_conv,
+                nn.MaxPool2d(2)
+            )
+            self.value_conv = nn.Sequential(
+                self.value_conv,
+                nn.MaxPool2d(2)
+            )
+
+    def forward(self, x):
+        """
+            inputs :
+                x : input feature maps(B x C x H x W)
+            returns :
+                out : self attention value + input feature
+        """
+        batchsize, C, height, width = x.size()
+        c = self.channel_latent
+        # proj_query: reshape to B x N x c, N = H x W
+        proj_query = self.query_conv(x).view(batchsize, c, -1).permute(0, 2, 1)
+        # proj_key: reshape to B x c x N_, N_ = H_ x W_
+        proj_key = self.key_conv(x).view(batchsize, c, -1)
+        # energy: B x N x N_, N = H x W, N_ = H_ x W_
+        energy = torch.bmm(proj_query, proj_key)
+        # attention: B x N_ x N, N = H x W, N_ = H_ x W_
+        attention = self.softmax(energy).permute(0, 2, 1)
+        # proj_value: B x c x N_, N_ = H_ x W_
+        proj_value = self.value_conv(x).view(batchsize, c, -1)
+        # attention_out: B x c x N, N = H x W
+        attention_out = torch.bmm(proj_value, attention)
+        # out: B x C x H x W
+        out = self.out_conv(attention_out.view(batchsize, c, height, width))
+
+        out = self.gamma * out + x
+        return out
+
+
+class Chuncked_Self_Attn_FM(nn.Module):
+    """
+        in_channel -> in_channel
+    """
+
+    def __init__(self, in_channel, latent_dim=8, subsample=True, grid=(8, 8)):
+        super(Chuncked_Self_Attn_FM, self).__init__()
+
+        self.self_attn_fm = Self_Attn_FM(in_channel, latent_dim=latent_dim, subsample=subsample)
+        self.grid = grid
+
+    def forward(self, x):
+        N, C, H, W = x.shape
+        chunk_size_H, chunk_size_W = H // self.grid[0], W // self.grid[1]
+        x_ = x.reshape(N, C, self.grid[0], chunk_size_H, self.grid[1], chunk_size_W).permute(0, 2, 4, 1, 3, 5).reshape(
+            N * self.grid[0] * self.grid[1], C, chunk_size_H, chunk_size_W)
+        output = self.self_attn_fm(x_).reshape(N, self.grid[0], self.grid[1], C, chunk_size_H,
+                                               chunk_size_W).permute(0, 3, 1, 4, 2, 5).reshape(N, C, H, W)
+        return output
+
+
+class DenseCell(nn.Module):
+    def __init__(self, in_channel, growth_rate, kernel_size=3):
+        super(DenseCell, self).__init__()
+        self.conv_block = nn.Sequential(
+            nn.Conv2d(in_channels=in_channel, out_channels=growth_rate, kernel_size=kernel_size, stride=1,
+                      padding=(kernel_size - 1) // 2, bias=False),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return torch.cat((x, self.conv_block(x)), dim=1)
+    
+
+class ResBlock(nn.Module):
+    """
+        ResBlock using bottleneck structure
+        dim -> dim
+    """
+
+    def __init__(self, dim, norm_layer, use_dropout, use_bias):
+        super(ResBlock, self).__init__()
+
+        sequence = [
+            nn.Conv2d(dim, dim, kernel_size=1, stride=1, bias=use_bias),
+            norm_layer(dim),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1, bias=use_bias),
+            norm_layer(dim),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(dim, dim, kernel_size=1, stride=1, bias=use_bias),
+            norm_layer(dim),
+            nn.ReLU(inplace=True)
+        ]
+        if use_dropout:
+            sequence += [nn.Dropout(0.5)]
+
+        self.model = nn.Sequential(*sequence)
+
+    def forward(self, x):
+        out = x + self.model(x)
+        return out
+
+class AutoencoderBackbone(nn.Module):
+    """
+        Autoencoder backbone
+        input_nc -> output_nc
+    """
+
+    def __init__(self, input_nc, output_nc=64, n_downsampling=2, n_blocks=6, norm_type='instance', use_dropout=False):
+        super(AutoencoderBackbone, self).__init__()
+
+        norm_layer = get_norm_layer(norm_type)
+        if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
+            use_bias = norm_layer.func != nn.BatchNorm2d
+        else:
+            use_bias = norm_layer != nn.BatchNorm2d
+
+        sequence = [
+            nn.Conv2d(input_nc, output_nc, kernel_size=7, stride=1, padding=3, bias=use_bias),
+            norm_layer(output_nc),
+            nn.ReLU(inplace=True)
+        ]
+
+        dim = output_nc
+        for i in range(n_downsampling):  # downsample the feature map
+            sequence += [
+                nn.Conv2d(dim, 2 * dim, kernel_size=3, stride=2, padding=1, bias=use_bias),
+                norm_layer(2 * dim),
+                nn.ReLU(inplace=True)
+            ]
+            dim *= 2
+
+        for i in range(n_blocks):  # ResBlock
+            sequence += [
+                ResBlock(dim, norm_layer, use_dropout, use_bias)
+            ]
+
+        for i in range(n_downsampling):  # upsample the feature map
+            sequence += [
+                nn.ConvTranspose2d(dim, dim // 2, kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
+                norm_layer(dim // 2),
+                nn.ReLU(inplace=True)
+            ]
+            dim //= 2
+        print("autoencoder: ")
+        print(sequence)
+        self.model = nn.Sequential(*sequence)
+
+    def forward(self, x):
+        out = self.model(x)
+        return out

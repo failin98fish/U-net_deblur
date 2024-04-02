@@ -2,7 +2,7 @@ import functools
 
 import torch
 import torch.nn as nn
-from .networks import Encoder, Denoiser, Decoder, SEBlock, get_norm_layer
+from .networks import Encoder, Denoiser, Decoder, SEBlock, Chuncked_Self_Attn_FM, AutoencoderBackbone, get_norm_layer
 from base.base_model import BaseModel
 from utils.util import torch_laplacian
 
@@ -55,8 +55,9 @@ class DefaultModel(BaseModel):
             Encoder(128, 256), # (N, 128, 32, 40) -> (N, 256, 16, 20), (N, 256, 32, 40)
         ])
         self.seb1 = SEBlock(512, 8)
-        self.seb2 = SEBlock(1, 1)
+        self.seb2 = nn.Conv2d(2, 1, kernel_size=1, stride=1, bias=use_bias)
         self.denoiser = Denoiser(512, 256) # (N, 512, 16, 20) -> (N, 256, 16, 20)
+        self.self_attn = Chuncked_Self_Attn_FM(256, latent_dim=8, subsample=True, grid=grid),
         self.decoder = nn.ModuleList([
             Decoder(256, 128), # (N, 256, 16, 20) -> (N, 128, 32, 40)
             Decoder(128, 64),  # (N, 128, 32, 40) -> (N, 64, 64, 80)
@@ -66,33 +67,23 @@ class DefaultModel(BaseModel):
         self.up = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True) # (N, 1, 128, 160) -> (N, 1, 256, 320)
             )
-        #optical flow, bidirectional
-        # self.flow_block = nn.Sequential(
-        #     nn.Conv2d(1, init_dim // 8, kernel_size=3, stride=1, padding=1),
-        #     norm_layer(init_dim // 8),
-        #     nn.ReLU(True),
-        #     nn.Conv2d(init_dim // 8, init_dim // 4, kernel_size=1, stride=1),
-        #     norm_layer(init_dim // 4),
-        #     nn.ReLU(True),
-        #     nn.Conv2d(init_dim // 4, init_dim // 2, kernel_size=1, stride=1),
-        #     norm_layer(init_dim // 2),
-        #     nn.ReLU(True),
-        #     nn.Conv2d(init_dim // 2, init_dim // 4, kernel_size=1, stride=1),
-        #     norm_layer(init_dim // 4),
-        #     nn.ReLU(True),
-        #     nn.Conv2d(init_dim // 4, init_dim // 8, kernel_size=1, stride=1),
-        #     norm_layer(init_dim // 8),
-        #     nn.ReLU(True),
-        #     nn.Conv2d(init_dim // 8, 4, kernel_size=1, stride=1),
-        #     nn.ReLU(True)
-        # )
+        self.Bi_denoise = nn.Sequential(
+                AutoencoderBackbone(1, output_nc=init_dim, n_downsampling=2, n_blocks=4, norm_type=norm_type,
+                                    use_dropout=use_dropout),
+                nn.Conv2d(init_dim, 1, kernel_size=1, stride=1, bias=use_bias),
+                nn.Tanh()
+            )
         self.tanh = nn.Tanh()
 
-    def forward(self, blurred_image, events):
+    def forward(self, blurred_image, noised_b_image, events):
         b_code = torch_laplacian(blurred_image)
         e_code = events
         b_codes = []
         e_codes = []
+
+        bi_gamma = noised_b_image ** (1 / 2.2)
+        bi_clean = torch.clamp(self.Bi_denoise(bi_gamma) + bi_gamma, min=0, max=1) ** 2.2
+        print(bi_clean.shape)
 
         for b_enc, e_enc in zip(self.encoder_b, self.encoder_e):
             b_code, b_skip = b_enc(b_code)
@@ -118,10 +109,15 @@ class DefaultModel(BaseModel):
         # flow = self.flow_block(code)
         # code = self.up(code)
         # log_diff = code
-        log_diff = torch.neg(code)
+        cated = torch.cat((bi_clean, code), dim=1)
+        fused = self.seb2(cated)
+        print(fused.shape)
+        log_diff = torch.neg(fused)
+        print(log_diff.shape)
         log_diff = self.tanh(log_diff)
         sharp_image = log_diff + blurred_image
+        # sharp_image = torch.clamp(sharp_image,min=0,max=1)
         # sharp_image = normalize_to_0_1(sharp_image)
         print(sharp_image.shape)
         # return flow, log_diff, sharp_image, log_diff
-        return log_diff, sharp_image, log_diff
+        return bi_clean, log_diff, sharp_image, log_diff
