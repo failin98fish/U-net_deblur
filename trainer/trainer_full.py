@@ -148,6 +148,13 @@ class DefaultTrainer(BaseTrainer):
                 # infer and calculate the loss
                 # (N, C, H, W) GPU tensor
                 F_pred, Bi_clean_pred, S_pred = self.model(E, B, Bi)
+                with torch.no_grad():
+                    if batch_idx % 100 == 0:
+                        # save images to tensorboardX
+                        self.writer.add_image('Bi_clean_pred', make_grid(Bi_clean_pred))
+                        self.writer.add_image('S_pred', make_grid(S_pred))
+                        self.writer.add_image('S_gt', make_grid(S_gt))
+                        self.writer.add_image('Blurred', make_grid(B))
                 loss = self.loss(F_pred, Bi_clean_pred, S_pred, F_gt, Bi_clean_gt, S_gt)
 
                 # calculate total loss/metrics and add scalar to tensorboardX
@@ -155,9 +162,9 @@ class DefaultTrainer(BaseTrainer):
                 total_val_loss += loss.item()
                 total_val_metrics += self._eval_metrics(S_pred, S_gt)
 
-        # add histogram of model parameters to the tensorboard
-        for name, p in self.model.named_parameters():
-            self.writer.add_histogram(name, p, bins='auto')
+        # # add histogram of model parameters to the tensorboard
+        # for name, p in self.model.named_parameters():
+        #     self.writer.add_histogram(name, p, bins='auto')
 
         return {
             'val_loss': total_val_loss / len(self.valid_data_loader),
