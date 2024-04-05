@@ -75,10 +75,10 @@ class DefaultTrainer(BaseTrainer):
                 if batch_idx % 100 == 0:
                     # save images to tensorboardX
                     self.writer.add_image('Bi_clean_pred', make_grid(Bi_clean_pred))
-                    # self.writer.add_image('log_diff', make_grid(create_color_image(log_diff)))
-                    color_images = create_color_image(log_diff)
-                    grid = make_grid(color_images)
-                    self.writer.add_image('log_diff', grid)
+                    self.writer.add_image('log_diff', make_grid(log_diff))
+                    # color_images = create_color_image(log_diff)
+                    # grid = make_grid(color_images)
+                    # self.writer.add_image('log_diff', grid)
                     self.writer.add_image('S_pred', make_grid(S_pred))
                     self.writer.add_image('S_gt', make_grid(S_gt))
                     self.writer.add_image('Blurred', make_grid(B))

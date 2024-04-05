@@ -54,10 +54,15 @@ class DefaultModel(BaseModel):
             Encoder(64, 128), # (N, 64, 64, 80) -> (N, 128, 32, 40), (N, 128, 64, 80)
             Encoder(128, 256), # (N, 128, 32, 40) -> (N, 256, 16, 20), (N, 256, 32, 40)
         ])
-        self.seb1 = SEBlock(512, 8)
-        self.seb2 = nn.Conv2d(2, 1, kernel_size=1, stride=1, bias=use_bias)
+        self.seb1 = SEBlock(512, 16)
+        self.seb2 = nn.Sequential(
+            nn.Conv2d(2, 16, kernel_size=3, stride=1, padding=1, bias=use_bias), # 增加融合层的感受野和非线性
+            nn.ReLU(inplace=True),
+            SEBlock(16, 2),
+            nn.Conv2d(16, 1, kernel_size=1, stride=1, bias=use_bias)
+        )
         self.denoiser = Denoiser(512, 256) # (N, 512, 16, 20) -> (N, 256, 16, 20)
-        self.self_attn = Chuncked_Self_Attn_FM(256, latent_dim=8, subsample=True, grid=grid),
+        self.self_attn = Chuncked_Self_Attn_FM(256, latent_dim=16, subsample=True, grid=grid)
         self.decoder = nn.ModuleList([
             Decoder(256, 128), # (N, 256, 16, 20) -> (N, 128, 32, 40)
             Decoder(128, 64),  # (N, 128, 32, 40) -> (N, 64, 64, 80)
@@ -96,7 +101,7 @@ class DefaultModel(BaseModel):
         code = self.seb1(code)
         code = self.denoiser(code)
         print("code.shape", code.shape) # [1, 256, 16, 20])
-
+        code = self.self_attn(code)
         for dec, b_skip, e_skip in zip(self.decoder, reversed(b_codes), reversed(e_codes)):
             print("++++++++++++++++++++++++++++++++++++++++++++++++++")
             skips = torch.cat([b_skip, e_skip], 1)
@@ -115,7 +120,7 @@ class DefaultModel(BaseModel):
         log_diff = torch.neg(fused)
         print(log_diff.shape)
         log_diff = self.tanh(log_diff)
-        sharp_image = log_diff + blurred_image
+        sharp_image = log_diff + bi_clean
         # sharp_image = torch.clamp(sharp_image,min=0,max=1)
         # sharp_image = normalize_to_0_1(sharp_image)
         print(sharp_image.shape)

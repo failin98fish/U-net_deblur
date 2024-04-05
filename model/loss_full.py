@@ -3,6 +3,7 @@ import torch.nn.functional as F
 
 from .loss_utils.total_variation_loss import TVLoss
 from .networks import CONV3_3_IN_VGG_19
+from utils.util import torch_laplacian
 
 tv = TVLoss()
 
@@ -52,6 +53,12 @@ def reconstruction_loss(S_pred, S_gt, **kwargs):
     return l2_loss + perceptual_loss
 
 
+def edge_loss(pred, target):
+    pred_edge = torch.abs(torch_laplacian(pred))
+    target_edge = torch.abs(torch_laplacian(target))
+    return F.l1_loss(pred_edge, target_edge)
+
+
 def loss_full(Bi_clean_pred, Bi_clean_gt, S_pred, S_gt, code, **kwargs):
     # Lf_lambda = kwargs.get('Lf_lambda', 1)
     # Lf = flow_loss(F_pred, F_gt, **kwargs['flow_loss']) * Lf_lambda
@@ -65,8 +72,12 @@ def loss_full(Bi_clean_pred, Bi_clean_gt, S_pred, S_gt, code, **kwargs):
     Ld = denoise_loss(Bi_clean_pred, Bi_clean_gt, **kwargs['denoise_loss']) * Ld_lambda
     print('Ld:', Ld.item())
 
+    e_loss = edge_loss(S_pred, S_gt)
+    print('edge_loss:', e_loss)
+
     loss_sharp = Lr
     loss_log_diff = torch.mean(torch.abs(code))  # log difference的L1正则化项
     loss = loss_sharp + 0.1 * loss_log_diff
+    print('loss_log_diff:', loss)
 
-    return Lr + loss
+    return Ld + loss + e_loss
