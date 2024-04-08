@@ -8,16 +8,16 @@ from utils.util import torch_laplacian
 tv = TVLoss()
 
 
-def flow_loss(F_pred, F_gt, **kwargs):
-    l1_loss_lambda = kwargs.get('l1_loss_lambda', 1)
-    l1_loss = F.l1_loss(F_pred, F_gt) * l1_loss_lambda
-    print('flow_loss: l1_loss:', l1_loss.item())
+# def flow_loss(F_pred, F_gt, **kwargs):
+#     l1_loss_lambda = kwargs.get('l1_loss_lambda', 1)
+#     l1_loss = F.l1_loss(F_pred, F_gt) * l1_loss_lambda
+#     print('flow_loss: l1_loss:', l1_loss.item())
 
-    tv_loss_lambda = kwargs.get('tv_loss_lambda', 1)
-    tv_loss = tv(F_pred) * tv_loss_lambda
-    print('flow_loss: tv_loss:', l1_loss.item())
+#     tv_loss_lambda = kwargs.get('tv_loss_lambda', 1)
+#     tv_loss = tv(F_pred) * tv_loss_lambda
+#     print('flow_loss: tv_loss:', l1_loss.item())
 
-    return l1_loss + tv_loss
+#     return l1_loss + tv_loss
 
 
 def denoise_loss(Bi_clean_pred, Bi_clean_gt, **kwargs):
@@ -59,6 +59,7 @@ def edge_loss(pred, target):
     return F.l1_loss(pred_edge, target_edge)
 
 
+
 def loss_full(Bi_clean_pred, Bi_clean_gt, S_pred, S_gt, code, **kwargs):
     # Lf_lambda = kwargs.get('Lf_lambda', 1)
     # Lf = flow_loss(F_pred, F_gt, **kwargs['flow_loss']) * Lf_lambda
@@ -72,12 +73,14 @@ def loss_full(Bi_clean_pred, Bi_clean_gt, S_pred, S_gt, code, **kwargs):
     Ld = denoise_loss(Bi_clean_pred, Bi_clean_gt, **kwargs['denoise_loss']) * Ld_lambda
     print('Ld:', Ld.item())
 
-    e_loss = edge_loss(S_pred, S_gt)
-    print('edge_loss:', e_loss)
-
-    loss_sharp = Lr
+    # e_loss = edge_loss(S_pred, S_gt)
+    # print('edge_loss:', e_loss)
     loss_log_diff = torch.mean(torch.abs(code))  # log difference的L1正则化项
-    loss = loss_sharp + 0.1 * loss_log_diff
-    print('loss_log_diff:', loss)
+    print('loss_log_diff:', 0.1*loss_log_diff)
+    
+    
+    tv_loss_lambda = kwargs.get('tv_loss_lambda', 1)
+    tv_loss = tv(S_pred) * tv_loss_lambda
+    print(' tv_loss:', tv_loss)
 
-    return Ld + loss + e_loss
+    return Ld + Lr + 0.1*loss_log_diff + tv_loss

@@ -99,12 +99,14 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.dense = DenseBlock(in_channels, out_channels)
         self.down = nn.Conv2d(out_channels, out_channels, kernel_size=2, stride=2)
+        self.seb = SEBlock(out_channels, 8)
 
     def forward(self, x):
         x = self.dense(x)
         # print("x:", x.shape)
         
         down = self.down(x)
+        down = self.seb(down)
         # print("down:", down.shape)
         return down, x
 

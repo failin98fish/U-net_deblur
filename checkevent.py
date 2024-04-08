@@ -33,7 +33,7 @@ def merge_data_to_image(data, image_size, time_interval):
 
 
 # 读取.npy文件
-data = np.load("/root/Deblurring-Low-Light-Images-with-Events/data/train/others/events/scene001_000.npy")
+data = np.load("mnt/disk/msc2024/runzhuw/data/test/train/others/events/scene001_000.npy")
 
 # 图像的大小
 image_size = (256,321)
