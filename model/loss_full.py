@@ -73,14 +73,12 @@ def loss_full(Bi_clean_pred, Bi_clean_gt, S_pred, S_gt, code, **kwargs):
     Ld = denoise_loss(Bi_clean_pred, Bi_clean_gt, **kwargs['denoise_loss']) * Ld_lambda
     print('Ld:', Ld.item())
 
-    # e_loss = edge_loss(S_pred, S_gt)
-    # print('edge_loss:', e_loss)
     loss_log_diff = torch.mean(torch.abs(code))  # log difference的L1正则化项
     print('loss_log_diff:', 0.1*loss_log_diff)
     
     
-    tv_loss_lambda = kwargs.get('tv_loss_lambda', 1)
-    tv_loss = tv(S_pred) * tv_loss_lambda
-    print(' tv_loss:', tv_loss)
+    # tv_loss_lambda = kwargs.get('tv_loss_lambda', 1)
+    # tv_loss = tv(S_pred) * tv_loss_lambda
+    # print(' tv_loss:', tv_loss)
 
-    return Ld + Lr + 0.1*loss_log_diff + tv_loss
+    return Ld + Lr + 0.1*loss_log_diff
