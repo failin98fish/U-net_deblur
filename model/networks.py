@@ -176,7 +176,7 @@ class Decoder(nn.Module):
         # print("encoded:", encoded.shape)
         # print("skip:", skip.shape)
         x = torch.cat([encoded, skip], 1)
-        print("x",x.shape)
+        # print("x",x.shape)
         return self.conv(x)
 
 ######################################################image denoiser module################################################################################
@@ -323,8 +323,8 @@ class AutoencoderBackbone(nn.Module):
                 nn.ReLU(inplace=True)
             ]
             dim //= 2
-        print("autoencoder: ")
-        print(sequence)
+        # print("autoencoder: ")
+        # print(sequence)
         self.model = nn.Sequential(*sequence)
 
     def forward(self, x):

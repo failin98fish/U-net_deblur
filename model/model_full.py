@@ -61,7 +61,7 @@ class DefaultModel(BaseModel):
 
         bi_gamma = noised_b_image ** (1 / 2.2)
         bi_clean = torch.clamp(self.bi_denoiser(bi_gamma) + bi_gamma, min=0, max=1) ** 2.2
-        print(bi_clean.shape)
+        # print(bi_clean.shape)
 
         for blurred_enc, events_enc in zip(self.encoder_blurred, self.encoder_events):
             blurred_code, blurred_skip = blurred_enc(blurred_code)
@@ -70,28 +70,28 @@ class DefaultModel(BaseModel):
             events_codes.append(events_skip)
 
         code = torch.cat([blurred_code, events_code], 1)
-        print("code.shape after cat", code.shape)
+        # print("code.shape after cat", code.shape)
         code = self.se_block1(code)
         code = self.denoiser(code)
-        print("code.shape", code.shape)
+        # print("code.shape", code.shape)
         code = self.self_attn(code)
 
         for dec, blurred_skip, events_skip in zip(self.decoder, reversed(blurred_codes), reversed(events_codes)):
-            print("++++++++++++++++++++++++++++++++++++++++++++++++++")
+            # print("++++++++++++++++++++++++++++++++++++++++++++++++++")
             skips = torch.cat([blurred_skip, events_skip], 1)
-            print("skips", skips.shape)
+            # print("skips", skips.shape)
             code = dec(code, skips)
-            print("code.shape", code.shape)
+            # print("code.shape", code.shape)
 
-        print("code.shape after decode", code.shape)
+        # print("code.shape after decode", code.shape)
 
         cated = torch.cat((bi_clean, code), dim=1)
         fused = self.se_block2(cated)
-        print(fused.shape)
+        # print(fused.shape)
         log_diff = torch.neg(fused)
-        print(log_diff.shape)
+        # print(log_diff.shape)
         log_diff = self.tanh(log_diff)
         sharp_image = log_diff + bi_clean
-        print(sharp_image.shape)
+        # print(sharp_image.shape)
 
         return bi_clean, log_diff, sharp_image, log_diff
