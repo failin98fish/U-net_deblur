@@ -7,19 +7,6 @@ from utils.util import torch_laplacian
 
 tv = TVLoss()
 
-
-# def flow_loss(F_pred, F_gt, **kwargs):
-#     l1_loss_lambda = kwargs.get('l1_loss_lambda', 1)
-#     l1_loss = F.l1_loss(F_pred, F_gt) * l1_loss_lambda
-#     print('flow_loss: l1_loss:', l1_loss.item())
-
-#     tv_loss_lambda = kwargs.get('tv_loss_lambda', 1)
-#     tv_loss = tv(F_pred) * tv_loss_lambda
-#     print('flow_loss: tv_loss:', l1_loss.item())
-
-#     return l1_loss + tv_loss
-
-
 def denoise_loss(Bi_clean_pred, Bi_clean_gt, **kwargs):
     l1_loss_lambda = kwargs.get('l1_loss_lambda', 1)
     l1_loss = F.l1_loss(Bi_clean_pred, Bi_clean_gt) * l1_loss_lambda
@@ -73,6 +60,7 @@ def loss_full(Bi_clean_pred, Bi_clean_gt, S_pred, S_gt, code, **kwargs):
     Ld = denoise_loss(Bi_clean_pred, Bi_clean_gt, **kwargs['denoise_loss']) * Ld_lambda
     print('Ld:', Ld.item())
 
+<<<<<<< HEAD
     loss_log_diff = torch.mean(torch.abs(code))  # log difference的L1正则化项
     print('loss_log_diff:', 0.1*loss_log_diff)
     
@@ -80,5 +68,21 @@ def loss_full(Bi_clean_pred, Bi_clean_gt, S_pred, S_gt, code, **kwargs):
     # tv_loss_lambda = kwargs.get('tv_loss_lambda', 1)
     # tv_loss = tv(S_pred) * tv_loss_lambda
     # print(' tv_loss:', tv_loss)
+=======
+    loss_log_diff = torch.mean(torch.abs(code))  # log difference的L1正则化项日志差异正则化项 (Log Difference Regularization)：
+#    - 这个正则化项鼓励编码（code）的值接近于零，可以看作是一种稀疏性约束。
+#    - 在事件相机图像去模糊中，这种正则化可以帮助网络学习更紧凑和信息丰富的编码表示。
+#    - 但是，需要注意权衡这个正则化项的权重，以免过度约束编码并影响重建质量。
+
+    print('loss_log_diff:', 0.1*loss_log_diff)
+    
+    
+    tv_loss_lambda = kwargs.get('tv_loss_lambda', 1)
+    tv_loss = tv(S_pred) * tv_loss_lambda
+    print(' tv_loss:', tv_loss)
+#     TV损失鼓励生成的图像具有平滑性，减少噪声和伪影。
+#    - 在事件相机图像去模糊中，TV损失可以帮助生成更干净和视觉上更令人满意的结果。
+#    - 但是，需要注意权衡TV损失的权重，以免过度平滑图像并损失细节。
+>>>>>>> 2e3ab4e04d86ce1a97b7fa56110e2f3affdde98d
 
     return Ld + Lr + 0.1*loss_log_diff

@@ -8,6 +8,7 @@ import functools
 VGG19_FEATURES = models.vgg19(pretrained=True).features
 CONV3_3_IN_VGG_19 = VGG19_FEATURES[0:15].cuda()
 
+#重置模型权重
 def init_weights(m):
     if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
         nn.init.normal_(m.weight, 0, 0.02)
@@ -22,7 +23,7 @@ def init_weights(m):
         if m.bias is not None:
             nn.init.zeros_(m.bias)
 
-
+#获得normalization的layer
 def get_norm_layer(norm_type='instance'):
     if norm_type == 'batch':
         norm_layer = nn.BatchNorm2d
@@ -41,7 +42,8 @@ class GlobalAvgPool(nn.Module):
     def forward(self, x):
         N, C, H, W = x.shape
         return x.view(N, C, -1).mean(-1)
-    
+
+#注意力机制，计算每个通道重要性，输出通道*权重的特征
 class SEBlock(nn.Module):
     """(N,C,H,W) -> (N,C,H,W)"""
 
@@ -102,38 +104,42 @@ class Encoder(nn.Module):
         self.seb = SEBlock(out_channels, 8)
 
     def forward(self, x):
-        x = self.dense(x)
-        # print("x:", x.shape)
-        
+        x = self.dense(x)   
         down = self.down(x)
         down = self.seb(down)
-        # print("down:", down.shape)
         return down, x
 
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1):
-        super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding)
-        self.relu = nn.ReLU(inplace=True)
-        nn.InstanceNorm2d(out_channels),
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, padding=padding)
+# class ResidualBlock(nn.Module):
+#     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1):
+#         super(ResidualBlock, self).__init__()
+#         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding)
+#         self.relu = nn.ReLU(inplace=True)
+#         nn.InstanceNorm2d(out_channels),
+#         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, padding=padding)
 
-    def forward(self, x):
-        residual = x
-        out = self.conv1(x)
-        out = self.relu(out)
-        out = self.conv2(out)
-        out += residual
-        out = self.relu(out)
-        return out
+#     def forward(self, x):
+#         residual = x
+#         out = self.conv1(x)
+#         out = self.relu(out)
+#         out = self.conv2(out)
+#         out += residual
+#         out = self.relu(out)
+#         return out
 
 class Denoiser(nn.Module):
-    def __init__(self, in_channels, out_channels, num_residual_blocks=5):
+    def __init__(self, in_channels, out_channels, num_residual_blocks=5, norm_type='instance', use_dropout=False):
         super(Denoiser, self).__init__()
+
+        norm_layer = get_norm_layer(norm_type)
+        if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
+            use_bias = norm_layer.func != nn.BatchNorm2d
+        else:
+            use_bias = norm_layer != nn.BatchNorm2d
+            
         self.conv_in = nn.Conv2d(in_channels, 64, kernel_size=3, padding=1)
         self.residual_blocks = nn.ModuleList()
         for _ in range(num_residual_blocks):
-            self.residual_blocks.append(ResidualBlock(64, 64))
+            self.residual_blocks.append(ResBlock(64, norm_layer, use_dropout, use_bias))
         self.conv_out = nn.Conv2d(64, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x):
@@ -170,10 +176,10 @@ class Decoder(nn.Module):
         # print("encoded:", encoded.shape)
         # print("skip:", skip.shape)
         x = torch.cat([encoded, skip], 1)
-        print("x",x.shape)
+        # print("x",x.shape)
         return self.conv(x)
 
-
+######################################################image denoiser module################################################################################
 class Self_Attn_FM(nn.Module):
     """ Self attention Layer for Feature Map dimension"""
 
@@ -244,19 +250,6 @@ class Chuncked_Self_Attn_FM(nn.Module):
         output = self.self_attn_fm(x_).reshape(N, self.grid[0], self.grid[1], C, chunk_size_H,
                                                chunk_size_W).permute(0, 3, 1, 4, 2, 5).reshape(N, C, H, W)
         return output
-
-
-class DenseCell(nn.Module):
-    def __init__(self, in_channel, growth_rate, kernel_size=3):
-        super(DenseCell, self).__init__()
-        self.conv_block = nn.Sequential(
-            nn.Conv2d(in_channels=in_channel, out_channels=growth_rate, kernel_size=kernel_size, stride=1,
-                      padding=(kernel_size - 1) // 2, bias=False),
-            nn.ReLU(inplace=True),
-        )
-
-    def forward(self, x):
-        return torch.cat((x, self.conv_block(x)), dim=1)
     
 
 class ResBlock(nn.Module):
@@ -330,8 +323,8 @@ class AutoencoderBackbone(nn.Module):
                 nn.ReLU(inplace=True)
             ]
             dim //= 2
-        print("autoencoder: ")
-        print(sequence)
+        # print("autoencoder: ")
+        # print(sequence)
         self.model = nn.Sequential(*sequence)
 
     def forward(self, x):
